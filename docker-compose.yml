@@ -9,6 +9,8 @@ services:
     environment:
       UPLOADS_DIR: "data/uploads"
       PROCESSED_DIR: "data/processed"
+      OLLAMA_BASE_URL: "http://ollama:11434"
+      OLLAMA_MODEL: "llama3.2:3b"
 
   streamlit:
     build:
@@ -19,3 +21,13 @@ services:
       - "8501:8501"
     environment:
       BACKEND_URL: "http://fastapi:8000"
+
+  ollama:
+      image: ollama/ollama:latest
+      ports:
+        - "11434:11434"
+      volumes:
+        - ollama:/root/.ollama
+
+volumes:
+  ollama:

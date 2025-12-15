@@ -1,8 +1,10 @@
 import uuid
+import json
 from app.repositories.memory_repo import MemoryRepo
+from app.adapters.ollama_client import OllamaClient
 
 class FaqService:
-    def build_faq(self, document_id: str) -> dict:
+    async def build_faq(self, document_id: str) -> dict:
         doc = MemoryRepo.documents.get(document_id)
         if not doc:
             raise KeyError("Document not found")
@@ -11,36 +13,50 @@ class FaqService:
         if not text:
             items = [{"q": "What is this document?", "a": "No text extracted yet."}]
         else:
-            lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-            items = []
+            text_snippet = text[:12000]
 
-            items.append({
-                "q": "What is this course about (summary)?",
-                "a": "This is a rough auto-summary based on the uploaded text. Replace with LLM later."
-            })
+            prompt = f"""
+Create an FAQ for exam preparation using the document below.
 
-            # If syllabus has headings like "Week", "Module", "Exam", pick some:
-            keywords = ["exam", "grading", "assessment", "week", "module", "topic", "literature", "reading"]
-            found = [ln for ln in lines if any(k in ln.lower() for k in keywords)]
-            if found:
-                items.append({
-                    "q": "What are the key topics / structure mentioned?",
-                    "a": "\n".join(found[:12])
-                })
-            else:
-                items.append({
-                    "q": "What are the key topics / structure mentioned?",
-                    "a": "\n".join(lines[:12])
-                })
+Return ONLY valid JSON in this exact format:
+[
+  {{"q": "question", "a": "answer"}},
+  ...
+]
 
-            items.append({
-                "q": "How should I prepare first?",
-                "a": "Start by listing topics/week sections, then generate practice questions per topic."
-            })
+Rules:
+- 8 to 12 items
+- Questions should cover: grading/exam format, key topics, schedule/modules, important definitions, typical tasks, and how to study.
+- Answers must be short and concrete (2-6 sentences).
+- If the document doesn’t contain something, say "Not specified in the document."
+
+DOCUMENT:
+{text_snippet}
+"""
+            raw = await OllamaClient().chat(prompt)
+
+            items = self._parse_items(raw)
 
         faq_id = str(uuid.uuid4())
-        MemoryRepo.faqs[faq_id] = {
-            "document_id": document_id,
-            "items": items
-        }
+        MemoryRepo.faqs[faq_id] = {"document_id": document_id, "items": items}
+        
+        print("OLLAMA_RAW_FIRST_500:", raw[:500])
         return {"faq_id": faq_id, "document_id": document_id, "count": len(items)}
+
+    def _parse_items(self, raw: str):
+        raw = raw.strip()
+
+        start = raw.find("[")
+        end = raw.rfind("]")
+        if start != -1 and end != -1 and end > start:
+            raw = raw[start:end+1]
+
+        data = json.loads(raw)
+
+        items = []
+        for it in data:
+            if isinstance(it, dict) and "q" in it and "a" in it:
+                items.append({"q": str(it["q"]), "a": str(it["a"])})
+        if not items:
+            raise ValueError("FAQ JSON parsed but had no valid items")
+        return items
