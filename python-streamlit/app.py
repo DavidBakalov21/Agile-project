@@ -4,7 +4,7 @@ import os
 
 st.title("Upload Syllabus and Chat with AI")
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://fastapi:8000")
 
 if "document_id" not in st.session_state:
     st.session_state.document_id = None
@@ -12,7 +12,7 @@ if "faq_id" not in st.session_state:
     st.session_state.faq_id = None
 
 st.header("1) Upload materials")
-uploaded_file = st.file_uploader("Choose a file", type=['txt', 'pdf', 'png', 'jpg', 'csv', 'xlsx'])
+uploaded_file = st.file_uploader("Choose a file", type=['txt', 'pdf', 'csv', 'xlsx', 'docx'])
 
 if st.button("Upload") and uploaded_file is not None:
     files = {"file": (uploaded_file.name, uploaded_file, uploaded_file.type)}

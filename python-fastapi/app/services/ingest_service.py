@@ -14,7 +14,8 @@ class IngestService:
 
     async def save_and_extract(self, file: UploadFile) -> dict:
         doc_id = str(uuid.uuid4())
-        safe_name = file.filename.replace("/", "_").replace("\\", "_")
+        safe_name = (file.filename or "upload").replace("/", "_").replace("\\", "_")
+        ext = Path(safe_name).suffix.lower()
         upload_path = self.uploads_dir / f"{doc_id}__{safe_name}"
 
         content = await file.read()
@@ -25,7 +26,8 @@ class IngestService:
         text_path.write_text(text, encoding="utf-8")
 
         MemoryRepo.documents[doc_id] = {
-            "filename": file.filename,
+            "filename": file.filename or safe_name,
+            "ext": ext,
             "path": str(upload_path),
             "text_path": str(text_path),
             "text": text,
