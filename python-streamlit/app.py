@@ -255,22 +255,49 @@ if st.session_state.faq_id:
 st.divider()
 st.header("3) Chat with materials")
 
+if "chat_messages" not in st.session_state:
+    st.session_state.chat_messages = []
+
 if st.session_state.document_id:
-    question = st.text_input("Ask a question")
-    if st.button("Ask") and question.strip():
-        resp = requests.post(
-            f"{BACKEND_URL}/chat",
-            json={"document_id": st.session_state.document_id, "question": question},
-            timeout=60,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            st.subheader("Answer")
-            st.write(data["answer"])
-            if data.get("matched_snippet"):
-                st.caption("Matched snippet:")
-                st.code(data["matched_snippet"])
-        else:
-            st.error(resp.text)
+    # render history
+    for m in st.session_state.chat_messages:
+        with st.chat_message(m["role"]):
+            st.write(m["content"])
+
+    user_msg = st.chat_input("Ask about course topics (definitions, compare, apply, examples...)")
+    if user_msg:
+        st.session_state.chat_messages.append({"role": "user", "content": user_msg})
+        with st.chat_message("user"):
+            st.write(user_msg)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking…"):
+                try:
+                    resp = requests.post(
+                        f"{BACKEND_URL}/chat",
+                        json={"document_id": st.session_state.document_id, "question": user_msg},
+                        timeout=120,
+                    )
+                except Exception as e:
+                    st.error(f"Chat request failed: {e}")
+                    st.stop()
+
+                if resp.status_code == 200:
+                    data = resp.json()
+                    answer = data["answer"]
+                    st.write(answer)
+
+                    # optional: show sources in expander
+                    if data.get("matched_snippet"):
+                        with st.expander("Show matched excerpt"):
+                            st.code(data["matched_snippet"])
+
+                    st.session_state.chat_messages.append({"role": "assistant", "content": answer})
+                else:
+                    st.error(resp.text)
+
+    if st.button("Clear chat"):
+        st.session_state.chat_messages = []
+        st.rerun()
 else:
     st.info("Upload a file first.")
