@@ -10,29 +10,61 @@ class FaqService:
 
         text = (doc.get("text") or "")
         text = " ".join(text.split())
-        text_snippet = text[:3000]  # start smaller, safer
+        text_snippet = text[:3000]
+        
+        topics = await self._extract_topics(text_snippet)
 
         prompt = f"""
-Generate 8 exam-prep FAQ items from the document snippet.
+        You are an exam-prep tutor.
 
-Return ONLY this format (no markdown):
-Q: ...
-A: ...
+        Create 10 FAQ items about course TOPICS. Use the topics list as the backbone.
+        For each topic, write an exam-like question and a helpful answer.
 
-DOCUMENT SNIPPET:
-{text_snippet}
-""".strip()
+        Rules:
+        - No syllabus logistics.
+        - Questions must be about understanding/applying concepts.
+        - Output ONLY in:
+        Q: ...
+        A: ...
+
+        TOPICS:
+        {chr(10).join(topics)}
+
+        SYLLABUS SNIPPET (context):
+        {text_snippet}
+        """.strip()
 
         raw = await OllamaClient().generate(prompt)
-
-        print("OLLAMA_RAW_FIRST_500:", raw[:500])
-
         items = self._parse_qa(raw)
 
         faq_id = str(uuid.uuid4())
         MemoryRepo.faqs[faq_id] = {"document_id": document_id, "items": items}
 
         return {"faq_id": faq_id, "document_id": document_id, "count": len(items)}
+    
+    async def _extract_topics(self, text_snippet: str) -> list[str]:
+        prompt = f"""
+    Extract a list of 8-12 course CONTENT topics from this syllabus snippet.
+
+    Rules:
+    - Only course content topics (concepts, methods, modules).
+    - Exclude logistics (grading, deadlines, attendance, schedule).
+    - Output ONLY as lines, one topic per line. No numbering.
+
+    SYLLABUS SNIPPET:
+    {text_snippet}
+    """.strip()
+
+        raw = await OllamaClient().generate(prompt)
+        topics = [t.strip("-• \t") for t in raw.splitlines() if t.strip()]
+        # keep short and unique
+        seen = set()
+        cleaned = []
+        for t in topics:
+            if t.lower() not in seen and len(t) <= 80:
+                cleaned.append(t)
+                seen.add(t.lower())
+        return cleaned[:12]
 
     def _parse_qa(self, raw: str):
         items = []
