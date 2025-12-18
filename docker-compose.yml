@@ -39,7 +39,7 @@ services:
       - ollama:/root/.ollama
     healthcheck:
       test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
-      interval: 5s
+      interval: 60s
       timeout: 3s
       retries: 60
 
