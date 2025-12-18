@@ -3,6 +3,8 @@ from app.repositories.memory_repo import MemoryRepo
 from app.adapters.ollama_client import OllamaClient
 
 class FaqService:
+    POOL_SIZE = 30
+    
     async def build_faq(self, document_id: str) -> dict:
         doc = MemoryRepo.documents.get(document_id)
         if not doc:
@@ -13,33 +15,46 @@ class FaqService:
         text_snippet = text[:3000]
         
         topics = await self._extract_topics(text_snippet)
+        
+        print("TOPICS:", topics)
 
         prompt = f"""
         You are an exam-prep tutor.
 
-        Create 10 FAQ items about course TOPICS. Use the topics list as the backbone.
-        For each topic, write an exam-like question and a helpful answer.
+        Your task:
+        Generate {self.POOL_SIZE} DISTINCT study FAQ items based on the COURSE TOPICS listed below.
 
         Rules:
-        - No syllabus logistics.
-        - Questions must be about understanding/applying concepts.
-        - Output ONLY in:
+        - Each question MUST be clearly related to one of the listed topics.
+        - Do NOT focus on syllabus logistics (grading, deadlines, schedule, attendance, office hours).
+        - Questions must be exam-like (define, explain, compare, apply, analyze).
+        - Answers: 3–6 sentences, include one short example when helpful.
+        - Avoid duplicates or near-duplicates.
+        - Do not mention the syllabus itself in questions.
+
+        Output format ONLY:
         Q: ...
         A: ...
 
-        TOPICS:
-        {chr(10).join(topics)}
+        COURSE TOPICS:
+        {chr(10).join(f"- {t}" for t in topics)}
 
-        SYLLABUS SNIPPET (context):
+        SYLLABUS CONTEXT (for reference only):
         {text_snippet}
         """.strip()
 
         raw = await OllamaClient().generate(prompt)
         items = self._parse_qa(raw)
 
-        faq_id = str(uuid.uuid4())
-        MemoryRepo.faqs[faq_id] = {"document_id": document_id, "items": items}
+        # enforce pool size
+        items = items[:self.POOL_SIZE]
 
+        faq_id = str(uuid.uuid4())
+        MemoryRepo.faqs[faq_id] = {
+            "document_id": document_id,
+            "topics": topics,
+            "items": items
+        }
         return {"faq_id": faq_id, "document_id": document_id, "count": len(items)}
     
     async def _extract_topics(self, text_snippet: str) -> list[str]:
